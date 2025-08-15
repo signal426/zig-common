@@ -40,13 +40,11 @@ pub const Query = struct {
 /// Wrapper around std.http.Client
 pub const Client = struct {
     client: http.Client,
-    base_url: std.Uri,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, base_url: []const u8) !Client {
+    pub fn init(allocator: std.mem.Allocator) !Client {
         return .{
             .client = http.Client{ .allocator = allocator },
-            .base_url = try std.Uri.parse(ensureValidBaseURL(base_url)),
             .allocator = allocator,
         };
     }
@@ -59,77 +57,63 @@ pub const Client = struct {
     pub fn send(self: *Client, request: Request) !Response {
         var body = std.ArrayList(u8).init(self.allocator);
         defer body.deinit();
-        const options = try request.toOptions(self.base_url, &body);
+
+        // create fetch options from the request object
+        const options = try request.toOptions(&body);
         const fetch_response = try self.client.fetch(options);
-        if (!request.ignore_res_body and options.payload != null) {
-            return .{
-                .status = fetch_response.status,
-                .body = options.payload,
-            };
-        } else {
-            return .{
-                .status = fetch_response.status,
-                .body = null,
-            };
+        if (request.ignore_res_body) {
+            return .{ .status = fetch_response.status, .body = null };
         }
+
+        // fetch appended response into body
+        const owned = try body.toOwnedSlice();
+        return .{ .status = fetch_response.status, .body = owned, .allocator = self.allocator };
     }
 };
 
 /// HTTP request object
 pub const Request = struct {
     method: http.Method,
-    path: []const u8,
-    headers: []http.Header,
+    url: []const u8,
+    extra_headers: []http.Header = &.{},
     body: []const u8,
-    ignore_res_body: bool,
+    ignore_res_body: bool = false,
 
-    pub fn newGet(path: []const u8, headers: []http.Header) Request {
+    pub fn newGet(url: []const u8) Request {
         return .{
             .method = .GET,
-            .path = path,
-            .headers = headers,
+            .url = url,
             .body = "",
-            .ignore_res_body = false,
         };
     }
 
-    pub fn newPost(path: []const u8, headers: []http.Header, body: []const u8) Request {
+    pub fn newPost(url: []const u8, body: []const u8) Request {
         return .{
             .method = .POST,
-            .path = path,
-            .headers = headers,
+            .url = url,
             .body = body,
-            .ignore_res_body = false,
         };
     }
 
-    pub fn newPut(path: []const u8, headers: []http.Header, body: []const u8) Request {
+    pub fn newPut(url: []const u8, body: []const u8) Request {
         return .{
             .method = .PUT,
-            .path = path,
-            .headers = headers,
+            .url = url,
             .body = body,
-            .ignore_res_body = false,
         };
     }
 
-    pub fn newDelete(path: []const u8, headers: []http.Header) Request {
+    pub fn newDelete(url: []const u8) Request {
         return .{
             .method = .DELETE,
-            .path = path,
-            .headers = headers,
+            .url = url,
             .body = "",
             .ignore_res_body = true,
         };
     }
 
     /// Convert the request to HTTP client options
-    pub fn toOptions(self: Request, base_url: std.Uri, body: *std.ArrayList(u8)) !http.Client.FetchOptions {
-        // combine base URL and path
-        var fixed: [1024]u8 = undefined;
-        var buf: []u8 = fixed[0..];
-        const url = try base_url.resolve_inplace(self.path, &buf);
-
+    pub fn toOptions(self: Request, body: *std.ArrayList(u8)) !http.Client.FetchOptions {
         // determine response storage type based on request
         const storage: http.Client.FetchOptions.ResponseStorage =
             if (self.ignore_res_body)
@@ -139,8 +123,9 @@ pub const Request = struct {
 
         return .{
             .method = self.method,
-            .location = .{ .uri = url },
-            .extra_headers = self.headers,
+            .location = .{ .url = self.url },
+            .headers = .{ .content_type = .{ .override = "application/json" } },
+            .extra_headers = self.extra_headers,
             .payload = if (self.body.len == 0) null else self.body,
             .response_storage = storage,
         };
@@ -151,6 +136,14 @@ pub const Request = struct {
 pub const Response = struct {
     status: http.Status,
     body: ?[]const u8 = null,
+    allocator: ?std.mem.Allocator = null,
+
+    pub fn deinit(self: *Response) void {
+        if (self.body) |body| {
+            self.allocator.?.free(body);
+            self.body = null;
+        }
+    }
 };
 
 /// HTTP header for content type JSON
@@ -170,23 +163,9 @@ fn urlEncodeInto(buf: *std.ArrayList(u8), s: []const u8) !void {
 }
 
 /// Check if unreserved character for URL encoding
-fn percentEncode(c: u8) !bool {
+fn percentEncode(c: u8) bool {
     return switch (c) {
-        'A'...'Z', 'a'...'z', '0'...'9', '-', '_', '.', '~' => true,
-        else => false,
+        'A'...'Z', 'a'...'z', '0'...'9', '-', '_', '.', '~' => false,
+        else => true,
     };
-}
-
-/// Ensure the base URL does not end with a slash
-fn ensureValidBaseURL(url: []const u8) []const u8 {
-    if (url.len > 0 and url[url.len - 1] == '/') return url[0 .. url.len - 1];
-    return url;
-}
-
-/// Ensure the URL path contains a leading slash
-fn ensureLeadingSlash(allocator: std.mem.Allocator, path: []const u8) []const u8 {
-    if (path.len == 0 or path[0] != '/') {
-        return try std.mem.concat(allocator, u8, &.{ "/", path });
-    }
-    return try allocator.dupe(u8, path);
 }

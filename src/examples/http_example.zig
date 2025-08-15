@@ -5,16 +5,14 @@ const http = std.http;
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    var http_client = try common.http.Client.init(gpa.allocator(), "https://httpbin.org");
+    var http_client = try common.http.Client.init(gpa.allocator());
     defer http_client.deinit();
 
-    var headers = std.ArrayList(http.Header).init(gpa.allocator());
-    defer headers.deinit();
+    const request = common.http.Request.newGet("https://httpbin.org/get");
 
-    try headers.append(common.http.contentTypeJSONHeader);
-    const request = common.http.Request.newGet("/get", headers.items);
+    // make sure to deinit the response
+    var response = try http_client.send(request);
+    defer response.deinit();
 
-    const response = try http_client.send(request);
-
-    std.debug.print("Status: {d}\n", .{response.status});
+    std.debug.print("Status: {d}, Body: {?s}\n", .{ response.status, response.body });
 }

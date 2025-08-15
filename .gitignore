@@ -1,0 +1,29 @@
+# Zig build artifacts
+.zig-cache/
+zig-out/
+
+# Common binaries
+bin/
+*.exe
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.dylib
+
+# Editor & OS junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Tests or generated files (if applicable)
+test-output/
+gen/

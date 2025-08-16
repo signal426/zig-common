@@ -69,42 +69,78 @@ pub const Client = struct {
         const owned = try body.toOwnedSlice();
         return .{ .status = fetch_response.status, .body = owned, .allocator = self.allocator };
     }
+
+    pub fn sendGet(self: *Client, url: []const u8, headers: []const http.Header) !Response {
+        var request = try Request.newGet(self.allocator, url, headers);
+        defer request.deinit();
+        return try self.send(request);
+    }
+
+    pub fn sendPut(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
+        var request = try Request.newPut(self.allocator, url, headers, body);
+        defer request.deinit();
+        return try self.send(request);
+    }
+
+    pub fn sendPost(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
+        var request = try Request.newPost(self.allocator, url, headers, body);
+        defer request.deinit();
+        return try self.send(request);
+    }
+
+    pub fn sendDelete(self: *Client, url: []const u8, headers: []const http.Header) !Response {
+        var request = try Request.newDelete(self.allocator, url, headers);
+        defer request.deinit();
+        return try self.send(request);
+    }
 };
 
 /// HTTP request object
 pub const Request = struct {
     method: http.Method,
     url: []const u8,
-    extra_headers: []http.Header = &.{},
     body: []const u8,
+    headers: Headers,
     ignore_res_body: bool = false,
+    allocator: std.mem.Allocator,
 
-    pub fn newGet(url: []const u8) Request {
+    pub fn deinit(self: *Request) void {
+        self.headers.deinit();
+    }
+
+    pub fn newGet(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !Request {
         return .{
+            .headers = try Headers.init(allocator, headers),
             .method = .GET,
             .url = url,
             .body = "",
+            .allocator = allocator,
         };
     }
 
-    pub fn newPost(url: []const u8, body: []const u8) Request {
+    pub fn newPost(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
         return .{
+            .headers = try Headers.init(allocator, headers),
             .method = .POST,
             .url = url,
             .body = body,
+            .allocator = allocator,
         };
     }
 
-    pub fn newPut(url: []const u8, body: []const u8) Request {
+    pub fn newPut(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
         return .{
+            .headers = try Headers.init(allocator, headers),
             .method = .PUT,
             .url = url,
             .body = body,
+            .allocator = allocator,
         };
     }
 
-    pub fn newDelete(url: []const u8) Request {
+    pub fn newDelete(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !Request {
         return .{
+            .headers = try Headers.init(allocator, headers),
             .method = .DELETE,
             .url = url,
             .body = "",
@@ -113,7 +149,7 @@ pub const Request = struct {
     }
 
     /// Convert the request to HTTP client options
-    pub fn toOptions(self: Request, body: *std.ArrayList(u8)) !http.Client.FetchOptions {
+    fn toOptions(self: Request, body: *std.ArrayList(u8)) !http.Client.FetchOptions {
         // determine response storage type based on request
         const storage: http.Client.FetchOptions.ResponseStorage =
             if (self.ignore_res_body)
@@ -124,8 +160,8 @@ pub const Request = struct {
         return .{
             .method = self.method,
             .location = .{ .url = self.url },
-            .headers = .{ .content_type = .{ .override = "application/json" } },
-            .extra_headers = self.extra_headers,
+            .headers = self.headers.base,
+            .extra_headers = self.headers.extras,
             .payload = if (self.body.len == 0) null else self.body,
             .response_storage = storage,
         };
@@ -135,7 +171,7 @@ pub const Request = struct {
 /// HTTP response object
 pub const Response = struct {
     status: http.Status,
-    body: ?[]const u8 = null,
+    body: ?[]u8 = null,
     allocator: ?std.mem.Allocator = null,
 
     pub fn deinit(self: *Response) void {
@@ -146,8 +182,59 @@ pub const Response = struct {
     }
 };
 
+/// Allows for using a single list to describe
+/// both base (if necessary) and extra headers.
+const Headers = struct {
+    extras: []http.Header,
+    base: http.Client.Request.Headers = .{},
+    allocator: std.mem.Allocator,
+
+    /// Initializes from the single list of headers
+    pub fn init(allocator: std.mem.Allocator, all: []const http.Header) !Headers {
+        var out = std.ArrayList(http.Header).init(allocator);
+        errdefer out.deinit();
+        const base = try processHeaders(all, &out);
+        return .{
+            .allocator = allocator,
+            .extras = try out.toOwnedSlice(),
+            .base = base,
+        };
+    }
+
+    pub fn deinit(self: *Headers) void {
+        self.allocator.free(self.extras);
+    }
+
+    fn processHeaders(all: []const http.Header, out: *std.ArrayList(http.Header)) !http.Client.Request.Headers {
+        var res: http.Client.Request.Headers = .{};
+        var has_ct: bool = false;
+        for (all) |header| {
+            if (std.ascii.eqlIgnoreCase(header.name, "host")) {
+                res.host = .{ .override = header.value };
+            } else if (std.ascii.eqlIgnoreCase(header.name, "authorization")) {
+                res.authorization = .{ .override = header.value };
+            } else if (std.ascii.eqlIgnoreCase(header.name, "user-agent")) {
+                res.user_agent = .{ .override = header.value };
+            } else if (std.ascii.eqlIgnoreCase(header.name, "connection")) {
+                res.connection = .{ .override = header.value };
+            } else if (std.ascii.eqlIgnoreCase(header.name, "accept-encoding")) {
+                res.accept_encoding = .{ .override = header.value };
+            } else if (std.ascii.eqlIgnoreCase(header.name, "content-type")) {
+                has_ct = true;
+                res.content_type = .{ .override = header.value };
+            } else {
+                try out.append(.{ .name = header.name, .value = header.value });
+            }
+        }
+        // if no content-type header included, default to json
+        if (!has_ct) {
+            try out.append(contentTypeJSONHeader);
+        }
+        return res;
+    }
+};
+
 /// HTTP header for content type JSON
-/// TODO: add more headers
 pub const contentTypeJSONHeader = http.Header{ .name = "Content-Type", .value = "application/json" };
 
 /// Encode the given string into the URL-encoded format

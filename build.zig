@@ -20,5 +20,14 @@ pub fn build(b: *std.Build) !void {
         });
         httpex.root_module.addImport("common", common_mod);
         b.installArtifact(httpex);
+
+        const fio_mkdirex = b.addExecutable(.{
+            .name = "example_fio_mkdir",
+            .root_source_file = b.path("src/examples/fio_mkdir_example.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        fio_mkdirex.root_module.addImport("common", common_mod);
+        b.installArtifact(fio_mkdirex);
     }
 }

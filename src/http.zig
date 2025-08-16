@@ -70,24 +70,40 @@ pub const Client = struct {
         return .{ .status = fetch_response.status, .body = owned, .allocator = self.allocator };
     }
 
+    // Sends an HTTP GET request to the specified location.
+    // If no Content-type header supplied, defaults to JSON.
     pub fn sendGet(self: *Client, url: []const u8, headers: []const http.Header) !Response {
         var request = try Request.newGet(self.allocator, url, headers);
         defer request.deinit();
         return try self.send(request);
     }
 
+    // Sends an HTTP PUT request to the specified location.
+    // If no Content-type header supplied, defaults to JSON.
     pub fn sendPut(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
         var request = try Request.newPut(self.allocator, url, headers, body);
         defer request.deinit();
         return try self.send(request);
     }
 
+    // Sends an HTTP PATCH request to the specified location.
+    // If no Content-type header supplied, defaults to JSON.
+    pub fn sendPatch(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
+        var request = try Request.newPatch(self.allocator, url, headers, body);
+        defer request.deinit();
+        return try self.send(request);
+    }
+
+    // Sends an HTTP POST request to the specified location.
+    // If no Content-type header supplied, defaults to JSON.
     pub fn sendPost(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
         var request = try Request.newPost(self.allocator, url, headers, body);
         defer request.deinit();
         return try self.send(request);
     }
 
+    // Sends an HTTP DELETE request to the specified location.
+    // If no Content-type header supplied, defaults to JSON.
     pub fn sendDelete(self: *Client, url: []const u8, headers: []const http.Header) !Response {
         var request = try Request.newDelete(self.allocator, url, headers);
         defer request.deinit();
@@ -122,6 +138,16 @@ pub const Request = struct {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .POST,
+            .url = url,
+            .body = body,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn newPatch(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
+        return .{
+            .headers = try Headers.init(allocator, headers),
+            .method = .PATCH,
             .url = url,
             .body = body,
             .allocator = allocator,

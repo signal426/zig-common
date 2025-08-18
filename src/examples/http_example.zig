@@ -7,6 +7,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // construct http client
+    var t = try std.time.Timer.start();
     var http_client = try common.http.Client.init(allocator);
     defer http_client.deinit();
 
@@ -22,11 +23,14 @@ pub fn main() !void {
 
     try urlb.setPath("get");
     try urlb.addQueryParam("test", "param");
+    try urlb.addQueryParam("test2", "param2");
 
     // send request
     var response = try http_client.sendGet(try urlb.buildInto(&scratch), hdrs.items);
     defer response.deinit();
 
+    const ns = t.read();
+
     // access status and response body
-    std.debug.print("Status: {d}, Body: {?s}\n", .{ response.status, response.body });
+    std.debug.print("Took: {d} ms\nStatus: {d}\nBody: {?s}\n", .{ ns / 1_000_000, response.status, response.body });
 }

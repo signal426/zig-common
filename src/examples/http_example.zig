@@ -1,6 +1,5 @@
 const std = @import("std");
 const common = @import("common");
-const http = std.http;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -12,12 +11,21 @@ pub fn main() !void {
     defer http_client.deinit();
 
     // optionally add headers
-    var hdrs = std.ArrayList(http.Header).init(allocator);
+    var hdrs = std.ArrayList(std.http.Header).init(allocator);
     defer hdrs.deinit();
     try hdrs.append(.{ .name = "test-me", .value = "test-you" });
 
+    var urlb = common.url.Builder.init(allocator, "https://httpbin.org");
+    defer urlb.deinit();
+
+    try urlb.setPath("/get");
+    try urlb.addQueryParam("test", "param");
+
+    var scratch: [256]u8 = undefined;
+    const url = try urlb.buildInto(&scratch);
+
     // send request
-    var response = try http_client.sendGet("https://httpbin.org/get", hdrs.items);
+    var response = try http_client.sendGet(url, hdrs.items);
     defer response.deinit();
 
     // access status and response body

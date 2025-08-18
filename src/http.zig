@@ -1,42 +1,6 @@
 const std = @import("std");
 const http = std.http;
 
-/// Query string builder
-pub const Query = struct {
-    list: std.ArrayList(Param),
-    const Param = struct { k: []const u8, v: []const u8 };
-
-    pub fn init(allocator: std.mem.Allocator) Query {
-        return .{ .list = std.ArrayList(Param).init(allocator) };
-    }
-
-    pub fn deinit(self: *Query) void {
-        self.list.deinit();
-    }
-
-    /// Add a key-value pair to the query string.
-    pub fn add(self: *Query, k: []const u8, v: []const u8) !void {
-        try self.list.append(.{ .k = k, .v = v });
-    }
-
-    /// Build the query string.
-    pub fn build(self: *Query, allocator: std.mem.Allocator) ![]const u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        if (self.list.items.len == 0) {
-            return allocator.dupe(u8, "") catch unreachable;
-        }
-        try buf.append('?');
-        for (self.list.items, 0..) |param, i| {
-            if (i > 0) try buf.append('&');
-            try urlEncodeInto(&buf, param.k);
-            try buf.append('=');
-            try urlEncodeInto(&buf, param.v);
-        }
-        return buf.toOwnedSlice();
-    }
-};
-
 /// Wrapper around std.http.Client
 pub const Client = struct {
     client: http.Client,
@@ -73,7 +37,7 @@ pub const Client = struct {
     // Sends an HTTP GET request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
     pub fn sendGet(self: *Client, url: []const u8, headers: []const http.Header) !Response {
-        var request = try Request.newGet(self.allocator, url, headers);
+        var request = try Request.initGet(self.allocator, url, headers);
         defer request.deinit();
         return try self.send(request);
     }
@@ -81,7 +45,7 @@ pub const Client = struct {
     // Sends an HTTP PUT request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
     pub fn sendPut(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
-        var request = try Request.newPut(self.allocator, url, headers, body);
+        var request = try Request.initPut(self.allocator, url, headers, body);
         defer request.deinit();
         return try self.send(request);
     }
@@ -89,7 +53,7 @@ pub const Client = struct {
     // Sends an HTTP PATCH request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
     pub fn sendPatch(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
-        var request = try Request.newPatch(self.allocator, url, headers, body);
+        var request = try Request.initPatch(self.allocator, url, headers, body);
         defer request.deinit();
         return try self.send(request);
     }
@@ -97,7 +61,7 @@ pub const Client = struct {
     // Sends an HTTP POST request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
     pub fn sendPost(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
-        var request = try Request.newPost(self.allocator, url, headers, body);
+        var request = try Request.initPost(self.allocator, url, headers, body);
         defer request.deinit();
         return try self.send(request);
     }
@@ -105,7 +69,7 @@ pub const Client = struct {
     // Sends an HTTP DELETE request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
     pub fn sendDelete(self: *Client, url: []const u8, headers: []const http.Header) !Response {
-        var request = try Request.newDelete(self.allocator, url, headers);
+        var request = try Request.initDelete(self.allocator, url, headers);
         defer request.deinit();
         return try self.send(request);
     }
@@ -124,7 +88,7 @@ pub const Request = struct {
         self.headers.deinit();
     }
 
-    pub fn newGet(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !Request {
+    pub fn initGet(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .GET,
@@ -134,7 +98,7 @@ pub const Request = struct {
         };
     }
 
-    pub fn newPost(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
+    pub fn initPost(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .POST,
@@ -144,7 +108,7 @@ pub const Request = struct {
         };
     }
 
-    pub fn newPatch(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
+    pub fn initPatch(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .PATCH,
@@ -154,7 +118,7 @@ pub const Request = struct {
         };
     }
 
-    pub fn newPut(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
+    pub fn initPut(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .PUT,
@@ -164,7 +128,7 @@ pub const Request = struct {
         };
     }
 
-    pub fn newDelete(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !Request {
+    pub fn initDelete(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .DELETE,
@@ -231,6 +195,7 @@ const Headers = struct {
         self.allocator.free(self.extras);
     }
 
+    /// Sort base from additional headers, create appropriate objects to represent each
     fn processHeaders(all: []const http.Header, out: *std.ArrayList(http.Header)) !http.Client.Request.Headers {
         var res: http.Client.Request.Headers = .{};
         var has_ct: bool = false;
@@ -262,23 +227,3 @@ const Headers = struct {
 
 /// HTTP header for content type JSON
 pub const contentTypeJSONHeader = http.Header{ .name = "Content-Type", .value = "application/json" };
-
-/// Encode the given string into the URL-encoded format
-fn urlEncodeInto(buf: *std.ArrayList(u8), s: []const u8) !void {
-    for (s) |c| {
-        if (!percentEncode(c)) {
-            try buf.append(c);
-        } else {
-            try buf.append('%');
-            try buf.writer().print("{s}", .{std.fmt.fmtSliceHexUpper(&[_]u8{c})});
-        }
-    }
-}
-
-/// Check if unreserved character for URL encoding
-fn percentEncode(c: u8) bool {
-    return switch (c) {
-        'A'...'Z', 'a'...'z', '0'...'9', '-', '_', '.', '~' => false,
-        else => true,
-    };
-}

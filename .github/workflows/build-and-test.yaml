@@ -18,13 +18,13 @@ jobs:
       - name: Set up Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.12.0
+          version: 0.14.1
 
       - name: Build (with summary)
         run: |
           zig build -Doptimize=ReleaseSafe --summary all | tee build.log
           {
-            echo "### Zig Build Summary (PR)"
+            echo "### Zig Build Summary"
             echo
             echo '```'
             cat build.log

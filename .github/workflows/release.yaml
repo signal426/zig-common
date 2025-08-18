@@ -1,0 +1,54 @@
+name: Release (Semantic)
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history for semantic-release)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Create distributable tar (+ checksum)
+        run: |
+          mkdir -p dist
+          TAR="zig-common.tar.gz"
+          tar --exclude-vcs -czf "dist/$TAR" build.zig src/ readme.md
+          (cd dist && sha256sum "$TAR" > "$TAR.sha256")
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-tarball
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+      - name: Set up Node (for semantic-release)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install semantic-release
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm i -D semantic-release @semantic-release/{git,github,changelog,commit-analyzer,release-notes-generator}
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release

@@ -35,6 +35,10 @@ pub const Builder = struct {
         defer url.deinit();
         try url.appendSlice(self.base);
         if (self.path) |path| {
+            // not slash, insert
+            if (self.base[self.base.len - 1] != '/' and path[0] != '/') {
+                try url.append('/');
+            }
             try url.appendSlice(path);
         }
         const query = try self.query.build(self.allocator);

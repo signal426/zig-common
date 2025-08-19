@@ -28,7 +28,7 @@ jobs:
         run: |
           mkdir -p dist
           TAR="zig-common.tar.gz"
-          tar --exclude-vcs -czf "dist/$TAR" build.zig src/ readme.md
+          tar --exclude-vcs -czf "dist/$TAR" build.zig build.zig.zion src/ readme.md
           (cd dist && sha256sum "$TAR" > "$TAR.sha256")
 
       - name: Upload artifact

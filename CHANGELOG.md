@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/signal426/zig-common/compare/v1.0.0...v1.0.1) (2025-08-19)
+
+
+### Bug Fixes
+
+* version ([e6e987d](https://github.com/signal426/zig-common/commit/e6e987d159b12759c8900cb35e2f2d3c00ff2cfc))
+
 # 1.0.0 (2025-08-18)
 
 

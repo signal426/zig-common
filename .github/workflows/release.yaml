@@ -31,7 +31,7 @@ jobs:
           tar --exclude-vcs \
               --exclude='./zig-cache' \
               --exclude='./zig-out' \
-              --exclude='./src/examples'
+              --exclude='./src/examples' \
               -czf "dist/$TAR" \
               build.zig \
               build.zig.zon \

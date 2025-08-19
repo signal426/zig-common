@@ -28,8 +28,15 @@ jobs:
         run: |
           mkdir -p dist
           TAR="zig-common.tar.gz"
-          tar --exclude-vcs -czf "dist/$TAR" build.zig src/ readme.md
-          (cd dist && sha256sum "$TAR" > "$TAR.sha256")
+          tar --exclude-vcs \
+              --exclude='./zig-cache' \
+              --exclude='./zig-out' \
+              --exclude='./src/examples'
+              -czf "dist/$TAR" \
+              build.zig \
+              build.zig.zon \
+              src/ \
+              readme.md
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

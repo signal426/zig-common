@@ -1,14 +1,13 @@
 const std = @import("std");
-const http = std.http;
 
 /// Wrapper around std.http.Client
 pub const Client = struct {
-    client: http.Client,
+    client: std.http.Client,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !Client {
         return .{
-            .client = http.Client{ .allocator = allocator },
+            .client = std.http.Client{ .allocator = allocator },
             .allocator = allocator,
         };
     }
@@ -36,7 +35,7 @@ pub const Client = struct {
 
     // Sends an HTTP GET request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
-    pub fn sendGet(self: *Client, url: []const u8, headers: []const http.Header) !Response {
+    pub fn sendGet(self: *Client, url: []const u8, headers: ?[]const std.http.Header) !Response {
         var request = try Request.initGet(self.allocator, url, headers);
         defer request.deinit();
         return try self.send(request);
@@ -44,7 +43,7 @@ pub const Client = struct {
 
     // Sends an HTTP PUT request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
-    pub fn sendPut(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
+    pub fn sendPut(self: *Client, url: []const u8, headers: ?[]const std.http.Header, body: ?[]const u8) !Response {
         var request = try Request.initPut(self.allocator, url, headers, body);
         defer request.deinit();
         return try self.send(request);
@@ -52,7 +51,7 @@ pub const Client = struct {
 
     // Sends an HTTP PATCH request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
-    pub fn sendPatch(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
+    pub fn sendPatch(self: *Client, url: []const u8, headers: ?[]const std.http.Header, body: ?[]const u8) !Response {
         var request = try Request.initPatch(self.allocator, url, headers, body);
         defer request.deinit();
         return try self.send(request);
@@ -60,7 +59,7 @@ pub const Client = struct {
 
     // Sends an HTTP POST request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
-    pub fn sendPost(self: *Client, url: []const u8, headers: []const http.Header, body: []const u8) !Response {
+    pub fn sendPost(self: *Client, url: []const u8, headers: ?[]const std.http.Header, body: ?[]const u8) !Response {
         var request = try Request.initPost(self.allocator, url, headers, body);
         defer request.deinit();
         return try self.send(request);
@@ -68,7 +67,7 @@ pub const Client = struct {
 
     // Sends an HTTP DELETE request to the specified location.
     // If no Content-type header supplied, defaults to JSON.
-    pub fn sendDelete(self: *Client, url: []const u8, headers: []const http.Header) !Response {
+    pub fn sendDelete(self: *Client, url: []const u8, headers: ?[]const std.http.Header) !Response {
         var request = try Request.initDelete(self.allocator, url, headers);
         defer request.deinit();
         return try self.send(request);
@@ -77,71 +76,64 @@ pub const Client = struct {
 
 /// HTTP request object
 pub const Request = struct {
-    method: http.Method,
+    method: std.http.Method,
     url: []const u8,
-    body: []const u8,
+    body: ?[]const u8 = null,
     headers: Headers,
     ignore_res_body: bool = false,
-    allocator: std.mem.Allocator,
 
     pub fn deinit(self: *Request) void {
         self.headers.deinit();
     }
 
-    pub fn initGet(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !Request {
+    pub fn initGet(allocator: ?std.mem.Allocator, url: []const u8, headers: ?[]const std.http.Header) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .GET,
             .url = url,
-            .body = "",
-            .allocator = allocator,
         };
     }
 
-    pub fn initPost(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
+    pub fn initPost(allocator: ?std.mem.Allocator, url: []const u8, headers: ?[]const std.http.Header, body: ?[]const u8) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .POST,
             .url = url,
             .body = body,
-            .allocator = allocator,
         };
     }
 
-    pub fn initPatch(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
+    pub fn initPatch(allocator: ?std.mem.Allocator, url: []const u8, headers: ?[]const std.http.Header, body: ?[]const u8) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .PATCH,
             .url = url,
             .body = body,
-            .allocator = allocator,
         };
     }
 
-    pub fn initPut(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header, body: []const u8) !Request {
+    pub fn initPut(allocator: ?std.mem.Allocator, url: []const u8, headers: ?[]const std.http.Header, body: ?[]const u8) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .PUT,
             .url = url,
             .body = body,
-            .allocator = allocator,
         };
     }
 
-    pub fn initDelete(allocator: std.mem.Allocator, url: []const u8, headers: []const http.Header) !Request {
+    pub fn initDelete(allocator: ?std.mem.Allocator, url: []const u8, headers: ?[]const std.http.Header) !Request {
         return .{
             .headers = try Headers.init(allocator, headers),
             .method = .DELETE,
             .url = url,
-            .body = "",
             .ignore_res_body = true,
         };
     }
 
     /// Convert the request to HTTP client options
-    fn toOptions(self: Request, body: *std.ArrayList(u8)) !http.Client.FetchOptions {
+    fn toOptions(self: Request, body: *std.ArrayList(u8)) !std.http.Client.FetchOptions {
         // determine response storage type based on request
-        const storage: http.Client.FetchOptions.ResponseStorage =
+        const storage: std.http.Client.FetchOptions.ResponseStorage =
             if (self.ignore_res_body)
                 .{ .ignore = {} }
             else
@@ -151,8 +143,8 @@ pub const Request = struct {
             .method = self.method,
             .location = .{ .url = self.url },
             .headers = self.headers.base,
-            .extra_headers = self.headers.extras,
-            .payload = if (self.body.len == 0) null else self.body,
+            .extra_headers = if (self.headers.extras) |extras| extras else &.{},
+            .payload = if (self.body != null and self.body.?.len > 0) self.body else null,
             .response_storage = storage,
         };
     }
@@ -160,7 +152,7 @@ pub const Request = struct {
 
 /// HTTP response object
 pub const Response = struct {
-    status: http.Status,
+    status: std.http.Status,
     body: ?[]u8 = null,
     allocator: ?std.mem.Allocator = null,
 
@@ -175,29 +167,32 @@ pub const Response = struct {
 /// Allows for using a single list to describe
 /// both base (if necessary) and extra headers.
 const Headers = struct {
-    extras: []http.Header,
-    base: http.Client.Request.Headers = .{},
-    allocator: std.mem.Allocator,
+    extras: ?[]std.http.Header = null,
+    base: std.http.Client.Request.Headers = .{},
+    allocator: ?std.mem.Allocator = null,
 
     /// Initializes from the single list of headers
-    pub fn init(allocator: std.mem.Allocator, all: []const http.Header) !Headers {
-        var out = std.ArrayList(http.Header).init(allocator);
+    pub fn init(allocator: ?std.mem.Allocator, all: ?[]const std.http.Header) !Headers {
+        if (all == null) {
+            return .{ .base = .{ .content_type = .{ .override = contentTypeJSONHeader.value } } };
+        }
+        var out = std.ArrayList(std.http.Header).init(allocator.?);
         errdefer out.deinit();
-        const base = try processHeaders(all, &out);
+        const base = try processHeaders(all.?, &out);
         return .{
-            .allocator = allocator,
+            .allocator = allocator.?,
             .extras = try out.toOwnedSlice(),
             .base = base,
         };
     }
 
     pub fn deinit(self: *Headers) void {
-        self.allocator.free(self.extras);
+        if (self.extras) |extras| self.allocator.?.free(extras);
     }
 
     /// Sort base from additional headers, create appropriate objects to represent each
-    fn processHeaders(all: []const http.Header, out: *std.ArrayList(http.Header)) !http.Client.Request.Headers {
-        var res: http.Client.Request.Headers = .{};
+    fn processHeaders(all: []const std.http.Header, out: *std.ArrayList(std.http.Header)) !std.http.Client.Request.Headers {
+        var res: std.http.Client.Request.Headers = .{};
         var has_ct: bool = false;
         for (all) |header| {
             if (std.ascii.eqlIgnoreCase(header.name, "host")) {
@@ -219,11 +214,11 @@ const Headers = struct {
         }
         // if no content-type header included, default to json
         if (!has_ct) {
-            try out.append(contentTypeJSONHeader);
+            res.content_type = .{ .override = contentTypeJSONHeader.value };
         }
         return res;
     }
 };
 
 /// HTTP header for content type JSON
-pub const contentTypeJSONHeader = http.Header{ .name = "Content-Type", .value = "application/json" };
+pub const contentTypeJSONHeader = std.http.Header{ .name = "Content-Type", .value = "application/json" };
